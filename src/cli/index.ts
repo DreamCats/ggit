@@ -7,9 +7,9 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { processNaturalLanguage } from '../core/nlp/processor.ts';
-import { executeGitCommand, validateGitCommand } from '../core/git/executor.ts';
+import { executeGitCommand, validateGitCommand, getGitDiff } from '../core/git/executor.ts';
 import { analyzeCodes } from '../core/analysis/analyzer.ts';
-import { setLLMConfig, setAPIKey, initLLMService } from '../core/nlp/llm-service.ts';
+import { setLLMConfig, setAPIKey, initLLMService, generateCommitMessage } from '../core/nlp/llm-service.ts';
 import { initWorkflowEngine } from '../core/workflow/index.ts';
 
 /**
@@ -26,8 +26,82 @@ export function initCLI(program: Command): void {
   program
     .argument('[command...]', '通过自然语言描述要执行的Git操作')
     .option('-i, --interactive', '使用交互式工作流模式进行操作')
-    .action(async (args: string[], options: { interactive?: boolean }) => {
+    .option('-m, --generate-message', '根据暂存区内容生成commit信息')
+    .action(async (args: string[], options: { interactive?: boolean, generateMessage?: boolean }) => {
       const command = args.join(' ');
+      
+      // 如果指定了生成commit信息选项
+      if (options.generateMessage) {
+        try {
+          // 初始化LLM服务
+          const llmAvailable = await initLLMService();
+          if (!llmAvailable) {
+            console.error(chalk.red('错误: LLM服务未配置。请先设置API密钥:'));
+            console.log(chalk.yellow('使用命令: gt config -k YOUR_API_KEY'));
+            return;
+          }
+          
+          console.log(chalk.dim('获取暂存区变更内容...'));
+          const diffContent = await getGitDiff();
+          
+          if (!diffContent) {
+            console.log(chalk.yellow('暂存区没有变更内容。请先使用 git add 添加文件到暂存区。'));
+            return;
+          }
+          
+          console.log(chalk.dim('正在生成commit信息...'));
+          const commitMessage = await generateCommitMessage(diffContent);
+          
+          console.log(chalk.green('\n推荐的commit信息:'));
+          console.log(chalk.bold(`"${commitMessage}"`));
+          
+          // 询问用户是否使用此信息进行提交
+          const { action } = await inquirer.prompt([{
+            type: 'list',
+            name: 'action',
+            message: '您想要:',
+            choices: [
+              { name: '使用此信息提交', value: 'commit' },
+              { name: '编辑后提交', value: 'edit' },
+              { name: '只复制信息，不提交', value: 'copy' },
+              { name: '取消', value: 'cancel' }
+            ]
+          }]);
+          
+          let finalMessage = commitMessage;
+          
+          if (action === 'edit') {
+            const { editedMessage } = await inquirer.prompt([{
+              type: 'input',
+              name: 'editedMessage',
+              message: '编辑commit信息:',
+              default: commitMessage
+            }]);
+            finalMessage = editedMessage;
+          }
+          
+          if (action === 'commit' || action === 'edit') {
+            try {
+              const simpleGit = (await import('simple-git')).default();
+              await simpleGit.commit(finalMessage);
+              console.log(chalk.green('提交成功!'));
+            } catch (error: any) {
+              console.error(chalk.red('提交失败:'), error.message || String(error));
+            }
+          } else if (action === 'copy') {
+            // 在终端中只能显示信息
+            console.log(chalk.blue('您可以复制以下commit信息:'));
+            console.log(finalMessage);
+          } else {
+            console.log(chalk.yellow('已取消操作'));
+          }
+          
+          return;
+        } catch (error: any) {
+          console.error(chalk.red('生成commit信息失败:'), error.message || String(error));
+          return;
+        }
+      }
       
       if (!command) {
         // 如果没有提供命令，显示帮助
@@ -229,5 +303,10 @@ export function initCLI(program: Command): void {
       console.log('  $ gt interactive "提交所有修改并推送到远程"');
       console.log('  $ gt -i 检查仓库状态并选择性提交部分文件');
       console.log('  $ gt workflow-help 显示工作流步骤和退出选项的详细帮助');
+      console.log('');
+      console.log(chalk.blue('生成提交信息示例:'));
+      console.log('');
+      console.log('  $ gt -m 根据暂存区内容自动生成合适的提交信息');
+      console.log('  $ git add . && gt -m 先暂存所有文件然后生成提交信息');
     });
 } 
