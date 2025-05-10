@@ -154,37 +154,6 @@ export async function executeGitCommand(command: string): Promise<ExecutionResul
       const gitCommandParts = gitCommand.split(' ');
       const mainCommand = gitCommandParts[0];
       
-      // 处理commit命令且没有提供消息的情况，使用LLM生成提交消息
-      if (mainCommand === 'commit' && !gitCommand.includes('-m') && !gitCommand.includes('--message')) {
-        try {
-          // 检查LLM服务是否可用
-          const llmAvailable = await initLLMService();
-          
-          if (llmAvailable) {
-            // 获取diff内容
-            const diffContent = await getGitDiff();
-            
-            if (diffContent) {
-              // 使用LLM生成提交消息
-              const commitMessage = await generateCommitMessage(diffContent);
-              
-              // 重构命令，添加提交消息
-              const newCommand = `commit -m "${commitMessage}"`;
-              console.log(`自动生成提交消息: "${commitMessage}"`);
-              
-              // 执行修改后的命令
-              const result = await git.raw(['commit', '-m', commitMessage]);
-              return {
-                success: true,
-                output: result || `已提交，消息: "${commitMessage}"`
-              };
-            }
-          }
-        } catch (error) {
-          console.warn('自动生成提交消息失败，使用默认消息:', error);
-          // 继续使用原始命令
-        }
-      }
       
       // 创建备份点（对于可能修改仓库状态的命令）
       // 这些命令通常需要创建备份点

@@ -10,6 +10,7 @@ import { processNaturalLanguage } from '../core/nlp/processor.ts';
 import { executeGitCommand, validateGitCommand } from '../core/git/executor.ts';
 import { analyzeCodes } from '../core/analysis/analyzer.ts';
 import { setLLMConfig, setAPIKey, initLLMService } from '../core/nlp/llm-service.ts';
+import { initWorkflowEngine } from '../core/workflow/index.ts';
 
 /**
  * 初始化CLI界面
@@ -24,7 +25,8 @@ export function initCLI(program: Command): void {
   // 自然语言命令（默认命令）
   program
     .argument('[command...]', '通过自然语言描述要执行的Git操作')
-    .action(async (args: string[]) => {
+    .option('-i, --interactive', '使用交互式工作流模式进行操作')
+    .action(async (args: string[], options: { interactive?: boolean }) => {
       const command = args.join(' ');
       
       if (!command) {
@@ -34,7 +36,19 @@ export function initCLI(program: Command): void {
       }
       
       try {
-        // 处理自然语言命令
+        // 如果指定了交互式模式，使用工作流引擎处理
+        if (options.interactive) {
+          console.log(chalk.blue('正在以交互式模式处理: ') + chalk.bold(`"${command}"`));
+          
+          // 初始化工作流引擎
+          const workflowEngine = initWorkflowEngine();
+          
+          // 处理用户输入
+          await workflowEngine.processInput(command);
+          return;
+        }
+        
+        // 否则使用传统方式处理自然语言命令
         console.log(chalk.dim(`正在处理: "${command}"`));
         const gitCommand = await processNaturalLanguage(command);
         
@@ -98,6 +112,42 @@ export function initCLI(program: Command): void {
         }
       } catch (error: any) {
         console.error(chalk.red('处理失败:'), error.message || String(error));
+      }
+    });
+
+  // 交互式工作流命令
+  program
+    .command('interactive')
+    .description('以交互式步骤流程处理Git操作')
+    .argument('<text>', '描述您想要执行的Git操作')
+    .action(async (text: string) => {
+      try {
+        console.log(chalk.blue('正在以交互式模式处理: ') + chalk.bold(`"${text}"`));
+        
+        // 初始化工作流引擎
+        const workflowEngine = initWorkflowEngine();
+        
+        // 处理用户输入
+        await workflowEngine.processInput(text);
+      } catch (error: any) {
+        console.error(chalk.red('处理失败:'), error.message || String(error));
+      }
+    });
+
+  // 工作流帮助命令
+  program
+    .command('workflow-help')
+    .alias('whelp')
+    .description('显示工作流步骤和退出选项的详细说明')
+    .action(async () => {
+      try {
+        // 初始化工作流引擎
+        const workflowEngine = initWorkflowEngine();
+        
+        // 显示工作流帮助信息
+        await workflowEngine.showHelp();
+      } catch (error: any) {
+        console.error(chalk.red('显示帮助信息失败:'), error.message || String(error));
       }
     });
 
@@ -221,5 +271,12 @@ export function initCLI(program: Command): void {
       console.log('  $ gt 对比昨天和今天的改动');
       console.log('  $ gt 切换到master分支并拉取最新代码');
       console.log('  $ gt 撤销最近的一次提交但保留代码');
+      console.log('');
+      console.log(chalk.blue('交互式工作流示例:'));
+      console.log('');
+      console.log('  $ gt -i 帮我提交代码和生成提交消息');
+      console.log('  $ gt interactive "提交所有修改并推送到远程"');
+      console.log('  $ gt -i 检查仓库状态并选择性提交部分文件');
+      console.log('  $ gt workflow-help 显示工作流步骤和退出选项的详细帮助');
     });
 } 

@@ -140,16 +140,23 @@ export class WorkflowEngine {
       
       // 如果步骤需要用户确认，询问用户
       if (step.requiresUserInput) {
-        const { proceed } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'proceed',
-          message: '继续执行此步骤?',
-          default: true
+        const { action } = await inquirer.prompt([{
+          type: 'list',
+          name: 'action',
+          message: '如何处理此步骤?',
+          choices: [
+            { name: '继续执行此步骤', value: 'continue' },
+            { name: '跳过此步骤', value: 'skip' },
+            { name: '退出工作流', value: 'exit' }
+          ]
         }]);
         
-        if (!proceed) {
+        if (action === 'skip') {
           console.log(chalk.yellow('已跳过此步骤'));
           continue;
+        } else if (action === 'exit') {
+          console.log(chalk.yellow('已退出工作流'));
+          return;
         }
       }
       
@@ -161,14 +168,18 @@ export class WorkflowEngine {
         console.error(chalk.red(`执行步骤 "${step.name}" 时发生错误:`), error.message || String(error));
         
         // 询问用户是否继续
-        const { continueExecution } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'continueExecution',
-          message: '是否继续执行后续步骤?',
-          default: false
+        const { errorAction } = await inquirer.prompt([{
+          type: 'list',
+          name: 'errorAction',
+          message: '遇到错误，如何继续?',
+          choices: [
+            { name: '继续执行后续步骤', value: 'continue' },
+            { name: '退出工作流', value: 'exit' }
+          ],
+          default: 'exit'
         }]);
         
-        if (!continueExecution) {
+        if (errorAction === 'exit') {
           console.log(chalk.yellow('已取消执行'));
           break;
         }
@@ -176,5 +187,73 @@ export class WorkflowEngine {
     }
     
     console.log(chalk.green('\n✓ 所有步骤已完成!'));
+  }
+  
+  /**
+   * 显示工作流帮助信息
+   * 列出所有注册的工作流步骤及退出选项
+   */
+  async showHelp(): Promise<void> {
+    console.log(chalk.blue.bold('工作流帮助信息'));
+    console.log(chalk.dim('GT-NL 提供了一系列交互式工作流步骤，可以帮助您更好地理解和控制Git操作。'));
+    console.log('');
+    
+    // 显示所有注册的工作流步骤
+    console.log(chalk.blue('可用工作流步骤:'));
+    
+    if (this.registeredSteps.size === 0) {
+      console.log(chalk.yellow('  未注册任何工作流步骤'));
+    } else {
+      // 对步骤进行分类整理
+      const gitSteps: WorkflowStep[] = [];
+      const otherSteps: WorkflowStep[] = [];
+      
+      this.registeredSteps.forEach(step => {
+        if (step.id.startsWith('git-')) {
+          gitSteps.push(step);
+        } else {
+          otherSteps.push(step);
+        }
+      });
+      
+      // 显示Git相关步骤
+      if (gitSteps.length > 0) {
+        console.log(chalk.blue('Git操作步骤:'));
+        gitSteps.forEach(step => {
+          console.log(`  ${chalk.green(step.id)} - ${step.name}`);
+          console.log(`    ${chalk.dim(step.description)}`);
+        });
+        console.log('');
+      }
+      
+      // 显示其他步骤
+      if (otherSteps.length > 0) {
+        console.log(chalk.blue('其他工作流步骤:'));
+        otherSteps.forEach(step => {
+          console.log(`  ${chalk.green(step.id)} - ${step.name}`);
+          console.log(`    ${chalk.dim(step.description)}`);
+        });
+        console.log('');
+      }
+    }
+    
+    // 显示交互式选项说明
+    console.log(chalk.blue('交互式选项:'));
+    console.log(`  ${chalk.green('继续执行此步骤')} - 执行当前步骤`);
+    console.log(`  ${chalk.green('跳过此步骤')} - 跳过当前步骤并继续下一步`);
+    console.log(`  ${chalk.green('退出工作流')} - 立即结束整个工作流`);
+    console.log('');
+    
+    // 显示错误处理选项
+    console.log(chalk.blue('错误处理选项:'));
+    console.log(`  ${chalk.green('继续执行后续步骤')} - 忽略当前错误并继续执行后续步骤`);
+    console.log(`  ${chalk.green('退出工作流')} - 终止工作流执行`);
+    console.log('');
+    
+    // 显示使用示例
+    console.log(chalk.blue('使用示例:'));
+    console.log(`  ${chalk.green('gt -i "提交当前代码"')} - 交互式提交代码`);
+    console.log(`  ${chalk.green('gt interactive "统计代码变更并提交"')} - 分析代码统计并交互式提交`);
+    console.log(`  ${chalk.green('gt -i "检查仓库状态"')} - 交互式检查Git状态`);
   }
 } 

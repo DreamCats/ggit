@@ -115,7 +115,8 @@ export const gitDiffAnalysisStep: WorkflowStep = {
         choices: [
           { name: '使用建议的提交消息', value: 'use' },
           { name: '编辑提交消息', value: 'edit' },
-          { name: '手动输入新提交消息', value: 'new' }
+          { name: '手动输入新提交消息', value: 'new' },
+          { name: '取消操作', value: 'cancel' }
         ]
       }]);
       
@@ -139,6 +140,10 @@ export const gitDiffAnalysisStep: WorkflowStep = {
           validate: (input: string) => input ? true : '提交消息不能为空'
         }]);
         finalCommitMessage = newMessage;
+      } else if (commitMessageAction === 'cancel') {
+        console.log(chalk.yellow('已取消提交消息生成'));
+        context.addToContext('cancelOperation', true);
+        return;
       }
       
       // 保存最终的提交消息到上下文
@@ -192,7 +197,8 @@ export const gitAddStep: WorkflowStep = {
       message: '您想如何添加文件?',
       choices: [
         { name: '添加所有变更文件', value: 'all' },
-        { name: '选择要添加的文件', value: 'select' }
+        { name: '选择要添加的文件', value: 'select' },
+        { name: '取消添加操作', value: 'cancel' }
       ]
     }]);
     
@@ -208,7 +214,7 @@ export const gitAddStep: WorkflowStep = {
       console.log(chalk.green('已添加所有变更文件到暂存区'));
       context.addToContext('filesAdded', true);
       
-    } else {
+    } else if (addOption === 'select') {
       // 让用户选择要添加的文件
       const { selectedFiles } = await inquirer.prompt([{
         type: 'checkbox',
@@ -238,6 +244,12 @@ export const gitAddStep: WorkflowStep = {
       
       console.log(chalk.green(`已添加 ${selectedFiles.length} 个文件到暂存区`));
       context.addToContext('filesAdded', true);
+    } else {
+      // 用户取消添加
+      console.log(chalk.yellow('已取消添加文件操作'));
+      context.addToContext('filesAdded', false);
+      context.addToContext('cancelOperation', true);
+      return;
     }
   },
   
@@ -284,20 +296,33 @@ export const gitCommitStep: WorkflowStep = {
     console.log(result.output);
     
     // 询问是否要推送到远程仓库
-    const { shouldPush } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'shouldPush',
-      message: '是否要将变更推送到远程仓库?',
-      default: false
+    const { pushAction } = await inquirer.prompt([{
+      type: 'list',
+      name: 'pushAction',
+      message: '提交后的操作?',
+      choices: [
+        { name: '推送到远程仓库', value: 'push' },
+        { name: '不推送，继续下一步操作', value: 'continue' },
+        { name: '结束工作流', value: 'end' }
+      ],
+      default: 'continue'
     }]);
     
-    context.addToContext('shouldPush', shouldPush);
+    if (pushAction === 'push') {
+      context.addToContext('shouldPush', true);
+    } else if (pushAction === 'end') {
+      context.addToContext('shouldPush', false);
+      context.addToContext('cancelOperation', true);
+    } else {
+      context.addToContext('shouldPush', false);
+    }
   },
   
   // 根据是否有文件被添加决定是否跳过此步骤
   async shouldSkip(context: WorkflowContext): Promise<boolean> {
     const filesAdded = context.getFromContext('filesAdded');
-    return !filesAdded;
+    const cancelOperation = context.getFromContext('cancelOperation');
+    return !filesAdded || cancelOperation === true;
   }
 };
 
@@ -363,7 +388,8 @@ export const gitPushStep: WorkflowStep = {
   // 根据用户选择决定是否跳过此步骤
   async shouldSkip(context: WorkflowContext): Promise<boolean> {
     const shouldPush = context.getFromContext('shouldPush');
-    return !shouldPush;
+    const cancelOperation = context.getFromContext('cancelOperation');
+    return !shouldPush || cancelOperation === true;
   }
 };
 
@@ -460,14 +486,19 @@ export const gitCodeStatsStep: WorkflowStep = {
       });
     
     // 询问是否显示详细统计
-    const { showDetailed } = await inquirer.prompt([{
-      type: 'confirm',
-      name: 'showDetailed',
-      message: '是否显示所有文件的详细变更统计?',
-      default: false
+    const { detailAction } = await inquirer.prompt([{
+      type: 'list',
+      name: 'detailAction',
+      message: '是否需要更多详情?',
+      choices: [
+        { name: '显示所有文件的详细变更统计', value: 'show' },
+        { name: '继续下一步', value: 'continue' },
+        { name: '结束统计', value: 'end' }
+      ],
+      default: 'continue'
     }]);
     
-    if (showDetailed && allStats.length > 0) {
+    if (detailAction === 'show' && allStats.length > 0) {
       console.log('');
       console.log(chalk.blue('所有文件变更详情:'));
       
@@ -475,6 +506,8 @@ export const gitCodeStatsStep: WorkflowStep = {
         console.log(`  ${stat.file}:`);
         console.log(`    ${chalk.green('+')} ${stat.added} 行添加, ${chalk.red('-')} ${stat.deleted} 行删除`);
       });
+    } else if (detailAction === 'end') {
+      console.log(chalk.yellow('已结束统计'));
     }
   },
   

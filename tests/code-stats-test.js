@@ -36,7 +36,7 @@ async function runCodeStatsTest() {
   const testCommands = [
     '统计一下当前代码变更情况',
     '帮我计算代码行数',
-    '我想查看代码变更统计信息并提交',
+    // '我想查看代码变更统计信息并提交',
     '生成当前修改的代码统计报告'
   ];
   
