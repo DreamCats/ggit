@@ -34,11 +34,10 @@ export const gitListBranchesStep: WorkflowStep = {
       throw new Error(`无法获取分支列表: ${branchesResult.error}`);
     }
     
-    // 解析分支列表
+    // 解析分支列表，不再排除当前分支
     const branches = branchesResult.output?.split('\n')
       .map(branch => branch.trim().replace(/^\*\s*/, ''))
-      .filter(branch => branch)
-      .filter(branch => branch !== currentBranch) || [];
+      .filter(branch => branch) || [];
     
     if (branches.length === 0) {
       console.log(chalk.yellow('没有其他分支可供合并'));
@@ -57,21 +56,22 @@ export const gitListBranchesStep: WorkflowStep = {
       type: 'list',
       name: 'sourceBranch',
       message: '请选择要合并的源分支:',
-      choices: branches
+      choices: branches,
+      default: currentBranch // 设置默认值为当前分支
     }]);
     
     context.addToContext('sourceBranch', sourceBranch);
     console.log(chalk.green(`已选择源分支: ${sourceBranch}`));
     
     // 询问用户选择合并的目标分支
-    const allBranches = [...branches, currentBranch].filter(branch => branch !== sourceBranch);
+    // 目标分支应该排除已选择的源分支
+    const targetBranches = branches.filter(branch => branch !== sourceBranch);
     
     const { targetBranch } = await inquirer.prompt([{
       type: 'list',
       name: 'targetBranch',
       message: '请选择合并的目标分支:',
-      choices: allBranches,
-      default: currentBranch
+      choices: targetBranches
     }]);
     
     context.addToContext('targetBranch', targetBranch);
