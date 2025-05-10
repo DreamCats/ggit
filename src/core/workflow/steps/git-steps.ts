@@ -287,16 +287,14 @@ export const gitCommitStep: WorkflowStep = {
     // 执行提交命令
     console.log(chalk.dim(`正在提交变更: "${commitMessage}"...`));
     
-    // 转义提交消息中的单引号，然后用单引号包裹整个消息
-    const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-    const result = await executeGitCommand(`git commit -m '${escapedMessage}'`);
-    
-    if (!result.success) {
-      throw new Error(`提交失败: ${result.error}`);
+    // 使用SimpleGit API直接提交，避免shell命令解析问题
+    try {
+      const simpleGit = (await import('simple-git')).default();
+      await simpleGit.commit(commitMessage);
+      console.log(chalk.green('提交成功!'));
+    } catch (error: any) {
+      throw new Error(`提交失败: ${error.message}`);
     }
-    
-    console.log(chalk.green('提交成功!'));
-    console.log(result.output);
     
     // 询问是否要推送到远程仓库
     const { pushAction } = await inquirer.prompt([{

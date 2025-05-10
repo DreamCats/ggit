@@ -97,14 +97,14 @@ async function testCommitMessages() {
     return;
   }
   
-  // 测试步骤3: 转义提交消息中的单引号，然后用单引号包裹整个消息
+  // 测试步骤3: 使用SimpleGit API直接提交，避免shell命令解析问题
   console.log(chalk.dim('3. 提交测试文件...'));
-  const escapedMessage = messageToTest.replace(/'/g, "'\\''");
-  const commitResult = await executeGitCommand(`git commit -m '${escapedMessage}'`);
   
-  if (commitResult.success) {
+  try {
+    const simpleGit = (await import('simple-git')).default();
+    await simpleGit.commit(messageToTest);
+    
     console.log(chalk.green('✓ 提交成功!'));
-    console.log(commitResult.output);
     
     // 显示提交历史以验证
     console.log(chalk.dim('\n验证提交历史:'));
@@ -112,8 +112,8 @@ async function testCommitMessages() {
     if (logResult.success) {
       console.log(logResult.output);
     }
-  } else {
-    console.log(chalk.red('✗ 提交失败:'), commitResult.error);
+  } catch (error) {
+    console.log(chalk.red('✗ 提交失败:'), error.message);
   }
   
   // 询问是否要恢复

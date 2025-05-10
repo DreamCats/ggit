@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "module": "src/index.ts",
   "type": "module",
+  "bin": {
+    "gt": "./dist/index.js"
+  },
   "scripts": {
     "dev": "bun run --watch src/index.ts",
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --outdir ./dist --target node",
+    "postbuild": "echo '#!/usr/bin/env node' | cat - ./dist/index.js > /tmp/gt-temp && mv /tmp/gt-temp ./dist/index.js && chmod +x ./dist/index.js",
     "test": "bun test"
   },
   "devDependencies": {
