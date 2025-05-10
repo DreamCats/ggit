@@ -4,7 +4,14 @@
  */
 
 import { WorkflowEngine } from './engine.ts';
-import { gitStatusStep, gitDiffAnalysisStep, gitAddStep, gitCommitStep, gitPushStep } from './steps/git-steps.ts';
+import { 
+  gitStatusStep, 
+  gitDiffAnalysisStep, 
+  gitAddStep, 
+  gitCommitStep, 
+  gitPushStep,
+  gitCodeStatsStep
+} from './steps/git-steps.ts';
 
 // 创建工作流引擎单例
 const workflowEngine = new WorkflowEngine();
@@ -17,6 +24,7 @@ function registerAllSteps() {
   workflowEngine.registerStep(gitAddStep);
   workflowEngine.registerStep(gitCommitStep);
   workflowEngine.registerStep(gitPushStep);
+  workflowEngine.registerStep(gitCodeStatsStep);
   
   // 可以在此添加更多步骤...
 }

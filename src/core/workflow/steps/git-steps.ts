@@ -214,7 +214,7 @@ export const gitAddStep: WorkflowStep = {
         type: 'checkbox',
         name: 'selectedFiles',
         message: '选择要添加的文件:',
-        choices: changedFiles.map(file => ({
+        choices: changedFiles.map((file: string) => ({
           name: file,
           checked: true
         }))
@@ -366,6 +366,161 @@ export const gitPushStep: WorkflowStep = {
     return !shouldPush;
   }
 };
+
+/**
+ * Git代码统计步骤
+ * 统计当前变更的代码行数
+ */
+export const gitCodeStatsStep: WorkflowStep = {
+  id: 'git-code-stats',
+  name: '统计代码变更',
+  description: '分析并统计当前变更的代码行数',
+  requiresUserInput: true,
+  
+  async execute(context: WorkflowContext): Promise<void> {
+    // 检查是否有变更
+    const hasChanges = context.getFromContext('hasChanges');
+    if (!hasChanges) {
+      console.log(chalk.yellow('没有变更需要统计'));
+      return;
+    }
+    
+    console.log(chalk.dim('正在统计代码变更情况...'));
+    
+    // 统计暂存区的变更
+    const stagedStatsResult = await executeGitCommand('git diff --cached --numstat');
+    
+    // 统计未暂存的变更
+    const unstagedStatsResult = await executeGitCommand('git diff --numstat');
+    
+    // 解析结果
+    const stagedStats = stagedStatsResult.success ? parseNumStats(stagedStatsResult.output || '') : [];
+    const unstagedStats = unstagedStatsResult.success ? parseNumStats(unstagedStatsResult.output || '') : [];
+    
+    // 合并统计数据
+    const allStats = [...stagedStats, ...unstagedStats];
+    
+    // 计算总数
+    const totals = allStats.reduce((acc, stat) => {
+      acc.added += stat.added;
+      acc.deleted += stat.deleted;
+      return acc;
+    }, { added: 0, deleted: 0 });
+    
+    // 分类统计
+    const statsByExtension = allStats.reduce((acc: Record<string, {added: number, deleted: number}>, stat) => {
+      const ext = getFileExtension(stat.file);
+      if (!acc[ext]) {
+        acc[ext] = { added: 0, deleted: 0 };
+      }
+      acc[ext].added += stat.added;
+      acc[ext].deleted += stat.deleted;
+      return acc;
+    }, {});
+    
+    // 保存统计结果到上下文
+    context.addToContext('codeStats', {
+      totals,
+      statsByExtension,
+      stagedStats,
+      unstagedStats,
+      allStats
+    });
+    
+    // 显示统计结果
+    console.log('');
+    console.log(chalk.blue.bold('代码变更统计:'));
+    console.log('');
+    
+    // 显示总计
+    console.log(chalk.blue('总计:'));
+    console.log(`  ${chalk.green('+')} ${totals.added} 行添加`);
+    console.log(`  ${chalk.red('-')} ${totals.deleted} 行删除`);
+    console.log(`  ${chalk.yellow('=')} ${totals.added - totals.deleted} 行净增减`);
+    console.log('');
+    
+    // 显示按文件类型分类的统计
+    console.log(chalk.blue('按文件类型分类:'));
+    Object.entries(statsByExtension)
+      .sort((a, b) => (b[1].added + b[1].deleted) - (a[1].added + a[1].deleted))
+      .forEach(([ext, stats]) => {
+        console.log(`  ${chalk.yellow(ext || '无扩展名')}:`);
+        console.log(`    ${chalk.green('+')} ${stats.added} 行添加, ${chalk.red('-')} ${stats.deleted} 行删除`);
+      });
+    console.log('');
+    
+    // 显示变更最多的文件
+    console.log(chalk.blue('变更最多的文件 (前5个):'));
+    allStats
+      .sort((a, b) => (b.added + b.deleted) - (a.added + a.deleted))
+      .slice(0, 5)
+      .forEach(stat => {
+        console.log(`  ${stat.file}:`);
+        console.log(`    ${chalk.green('+')} ${stat.added} 行添加, ${chalk.red('-')} ${stat.deleted} 行删除`);
+      });
+    
+    // 询问是否显示详细统计
+    const { showDetailed } = await inquirer.prompt([{
+      type: 'confirm',
+      name: 'showDetailed',
+      message: '是否显示所有文件的详细变更统计?',
+      default: false
+    }]);
+    
+    if (showDetailed && allStats.length > 0) {
+      console.log('');
+      console.log(chalk.blue('所有文件变更详情:'));
+      
+      allStats.forEach(stat => {
+        console.log(`  ${stat.file}:`);
+        console.log(`    ${chalk.green('+')} ${stat.added} 行添加, ${chalk.red('-')} ${stat.deleted} 行删除`);
+      });
+    }
+  },
+  
+  // 根据是否有变更决定是否跳过此步骤
+  async shouldSkip(context: WorkflowContext): Promise<boolean> {
+    const hasChanges = context.getFromContext('hasChanges');
+    return !hasChanges;
+  }
+};
+
+/**
+ * 解析git diff --numstat的输出，提取添加、删除行数和文件名
+ * @param output git diff --numstat的输出
+ * @returns 解析后的统计数据
+ */
+function parseNumStats(output: string): Array<{added: number, deleted: number, file: string}> {
+  const stats: Array<{added: number, deleted: number, file: string}> = [];
+  
+  if (!output) return stats;
+  
+  const lines = output.split('\n');
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 3) {
+      const added = parts[0] === '-' ? 0 : parseInt(parts[0], 10) || 0;
+      const deleted = parts[1] === '-' ? 0 : parseInt(parts[1], 10) || 0;
+      const file = parts.slice(2).join(' ');
+      
+      stats.push({ added, deleted, file });
+    }
+  }
+  
+  return stats;
+}
+
+/**
+ * 从文件路径中提取文件扩展名
+ * @param filePath 文件路径
+ * @returns 文件扩展名 (不含点号，例如'js'、'ts'等)，无扩展名则返回空字符串
+ */
+function getFileExtension(filePath: string): string {
+  const match = filePath.match(/\.([^./\\]+)$/);
+  return match ? match[1].toLowerCase() : '';
+}
 
 /**
  * 从git status输出中提取更改的文件列表

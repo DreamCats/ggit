@@ -37,8 +37,16 @@ const gitCommandSchema = z.object({
   alternatives: z.array(z.string()).optional().describe("可选的替代命令")
 });
 
+// 定义工作流计划结果的格式
+const workflowPlanSchema = z.object({
+  steps: z.array(z.string()).describe("工作流步骤ID列表"),
+  summary: z.string().describe("工作流计划的概述"),
+  reasoning: z.string().describe("分析过程和理由")
+});
+
 // 定义类型
 type GitCommandResult = z.infer<typeof gitCommandSchema>;
+type WorkflowPlanResult = z.infer<typeof workflowPlanSchema>;
 
 /**
  * 初始化LLM服务
@@ -175,6 +183,92 @@ export async function generateGitCommand(input: string): Promise<GitCommandResul
   } catch (error) {
     console.error('LLM处理失败:', error);
     throw new Error(`LLM处理失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * 生成工作流计划
+ * @param input 用户输入
+ * @returns 工作流计划
+ */
+export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanResult> {
+  // 检查API密钥
+  if (!API_KEY) {
+    throw new Error('请先设置OpenAI API密钥');
+  }
+  
+  try {
+    // 初始化LLM
+    const modelConfig: any = {
+      modelName: MODEL_NAME,
+      temperature: 0.2, // 允许一定的创造性
+      openAIApiKey: API_KEY,
+    };
+    
+    // 如果设置了BASE_URL，添加到配置中
+    if (BASE_URL) {
+      modelConfig.configuration = {
+        baseURL: BASE_URL
+      };
+    }
+    
+    const model = new ChatOpenAI(modelConfig);
+    
+    // 创建输出解析器
+    const parser = StructuredOutputParser.fromZodSchema(workflowPlanSchema);
+    
+    // 创建提示模板
+    const prompt = ChatPromptTemplate.fromMessages([
+      SystemMessagePromptTemplate.fromTemplate(
+        `你是一个分析用户意图并生成工作流计划的专家。根据用户的输入，生成一个分步骤的工作流计划。
+
+        可用的工作流步骤ID：
+        - git-status: 检查Git仓库状态和变更文件
+        - git-diff-analysis: 分析变更内容并生成提交消息建议
+        - git-add: 将变更文件添加到暂存区
+        - git-commit: 提交变更
+        - git-push: 推送到远程仓库
+        - git-code-stats: 统计变更的代码行数，按文件类型和文件分类展示
+        
+        你需要根据用户的意图，选择合适的步骤并按照逻辑顺序排列。
+        
+        例如：
+        1. 用户想要"提交当前修改"，应该包含：git-status -> git-diff-analysis -> git-add -> git-commit
+        2. 用户想要"检查状态"，只需要：git-status
+        3. 用户想要"提交并推送"，应该包含：git-status -> git-diff-analysis -> git-add -> git-commit -> git-push
+        4. 用户想要"统计代码变更"，应该包含：git-status -> git-code-stats
+        5. 用户想要"查看代码统计并提交"，应该包含：git-status -> git-code-stats -> git-diff-analysis -> git-add -> git-commit
+        
+        请分析用户的意图，并生成合适的工作流计划。如果用户明确提到了统计代码行数或查看代码变更统计，一定要包含git-code-stats步骤。
+        
+        输出必须符合以下JSON结构:
+        {format_instructions}`
+      ),
+      HumanMessagePromptTemplate.fromTemplate("{input}")
+    ]);
+    
+    // 格式化提示
+    const formattedPrompt = await prompt.formatPromptValue({
+      format_instructions: parser.getFormatInstructions(),
+      input: input
+    });
+    
+    // 使用格式化后的消息调用模型
+    const result = await model.generatePrompt([formattedPrompt]);
+    const message = result.generations[0][0].text;
+    
+    // 解析回复为JSON
+    return await parser.parse(message);
+    
+  } catch (error) {
+    console.error('生成工作流计划失败:', error);
+    
+    // 失败时返回默认工作流计划（检查状态、添加所有文件、提交）
+    return {
+      steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'],
+      summary: '检查状态并提交所有变更',
+      reasoning: '由于无法分析用户意图，提供一个基本的提交工作流作为默认选项。'
+    };
   }
 }
 
