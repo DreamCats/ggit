@@ -7,8 +7,9 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import inquirer from 'inquirer';
 import { processNaturalLanguage } from '../core/nlp/processor.ts';
-import { executeGitCommand } from '../core/git/executor.ts';
+import { executeGitCommand, validateGitCommand } from '../core/git/executor.ts';
 import { analyzeCodes } from '../core/analysis/analyzer.ts';
+import { setLLMConfig, setAPIKey, initLLMService } from '../core/nlp/llm-service.ts';
 
 /**
  * 初始化CLI界面
@@ -37,9 +38,40 @@ export function initCLI(program: Command): void {
         console.log(chalk.dim(`正在处理: "${command}"`));
         const gitCommand = await processNaturalLanguage(command);
         
+        // 检查命令风险
+        const risk = await validateGitCommand(gitCommand);
+        
         // 预览命令
         console.log('');
         console.log(chalk.blue('即将执行:'), chalk.bold(gitCommand));
+        
+        // 根据风险级别显示不同的提示
+        if (risk.level === 'high') {
+          console.log(chalk.red('⚠️ 高风险命令:'), risk.description);
+          if (risk.mitigation) {
+            console.log(chalk.yellow('建议:'), risk.mitigation);
+          }
+          
+          // 生成随机验证码
+          const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
+          
+          // 请求用户输入验证码确认
+          const { userCode } = await inquirer.prompt([{
+            type: 'input',
+            name: 'userCode',
+            message: `为确保安全，请输入验证码 ${verificationCode} 以继续执行:`,
+            validate: (input: string) => input === verificationCode ? true : '验证码不正确，请重新输入'
+          }]);
+          
+          console.log(chalk.green('验证通过，继续执行...'));
+        } else if (risk.level === 'medium') {
+          console.log(chalk.yellow('⚠️ 中等风险命令:'), risk.description);
+          if (risk.mitigation) {
+            console.log(chalk.dim('建议:'), risk.mitigation);
+          }
+        } else {
+          console.log(chalk.green('✓ 低风险命令:'), risk.description);
+        }
         
         // 请求确认
         const { confirmed } = await inquirer.prompt([{
@@ -52,15 +84,102 @@ export function initCLI(program: Command): void {
         if (confirmed) {
           // 执行命令
           const result = await executeGitCommand(gitCommand);
-          console.log(chalk.green('执行成功!'));
-          if (result.output) {
-            console.log(result.output);
+          
+          if (result.success) {
+            console.log(chalk.green('执行成功!'));
+            if (result.output) {
+              console.log(result.output);
+            }
+          } else {
+            console.error(chalk.red('执行失败:'), result.error);
           }
         } else {
           console.log(chalk.yellow('已取消执行'));
         }
       } catch (error: any) {
         console.error(chalk.red('处理失败:'), error.message || String(error));
+      }
+    });
+
+  // 配置命令
+  program
+    .command('config')
+    .description('配置LLM服务参数')
+    .option('-k, --key <apiKey>', 'OpenAI API密钥')
+    .option('-m, --model <model>', 'LLM模型名称，默认为gpt-3.5-turbo')
+    .option('-u, --base-url <url>', 'API基础URL，用于自定义端点')
+    .option('--show', '显示当前配置')
+    .action(async (options: { key?: string, model?: string, baseUrl?: string, show?: boolean }) => {
+      try {
+        // 初始化LLM服务以加载当前配置
+        await initLLMService();
+        
+        if (options.show) {
+          // 读取并显示当前配置
+          try {
+            const configPath = `${process.env.HOME || process.env.USERPROFILE}/.gt-nl/config.json`;
+            const configData = await import('fs/promises').then(fs => fs.readFile(configPath, 'utf-8'));
+            const config = JSON.parse(configData);
+            
+            console.log(chalk.blue('当前配置:'));
+            console.log(`API密钥: ${config.apiKey ? `${config.apiKey.substring(0, 4)}...${config.apiKey.substring(config.apiKey.length - 4)}` : '未设置'}`);
+            console.log(`模型: ${config.model || 'gpt-3.5-turbo (默认)'}`);
+            console.log(`基础URL: ${config.baseUrl || '默认OpenAI端点'}`);
+          } catch (error) {
+            console.log(chalk.yellow('未找到配置文件或文件无效'));
+          }
+          return;
+        }
+        
+        if (options.key || options.model || options.baseUrl) {
+          // 如果提供了参数，直接设置
+          const config: any = {};
+          
+          if (options.key) config.apiKey = options.key;
+          if (options.model) config.model = options.model;
+          if (options.baseUrl) config.baseUrl = options.baseUrl;
+          
+          await setLLMConfig(config);
+          console.log(chalk.green('配置已更新!'));
+          
+          // 显示已设置的内容
+          if (options.key) console.log('API密钥已设置');
+          if (options.model) console.log(`模型已设置为: ${options.model}`);
+          if (options.baseUrl) console.log(`基础URL已设置为: ${options.baseUrl}`);
+        } else {
+          // 如果没有提供参数，使用交互式界面
+          const answers = await inquirer.prompt([
+            {
+              type: 'input',
+              name: 'apiKey',
+              message: 'OpenAI API密钥:',
+              validate: (input: string) => input ? true : '请输入有效的API密钥'
+            },
+            {
+              type: 'input',
+              name: 'model',
+              message: 'LLM模型名称 (默认: gpt-3.5-turbo):',
+              default: 'gpt-3.5-turbo'
+            },
+            {
+              type: 'input',
+              name: 'baseUrl',
+              message: 'API基础URL (可选):',
+            }
+          ]);
+          
+          const config: any = {
+            apiKey: answers.apiKey
+          };
+          
+          if (answers.model) config.model = answers.model;
+          if (answers.baseUrl) config.baseUrl = answers.baseUrl;
+          
+          await setLLMConfig(config);
+          console.log(chalk.green('配置已更新!'));
+        }
+      } catch (error: any) {
+        console.error(chalk.red('配置更新失败:'), error.message || String(error));
       }
     });
 

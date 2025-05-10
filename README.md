@@ -46,7 +46,36 @@ gt 对比昨天和今天的改动
 
 # 代码扫描
 gt scan --security
+
+# 配置LLM服务
+gt config
 ```
+
+## 配置LLM服务
+
+GT-NL使用OpenAI或兼容接口的LLM服务进行自然语言理解。您可以通过以下方式配置LLM服务参数：
+
+```bash
+# 设置API密钥
+gt config -k "your-api-key"
+
+# 设置模型名称（默认为gpt-3.5-turbo）
+gt config -m "gpt-4"
+
+# 设置自定义API端点（对于兼容OpenAI接口的本地或其他服务）
+gt config -u "http://your-api-server/v1"
+
+# 设置多个参数
+gt config -k "your-api-key" -m "gpt-4" -u "http://your-api-server/v1"
+
+# 查看当前配置
+gt config --show
+
+# 交互式配置
+gt config
+```
+
+配置信息保存在用户主目录的 `.gt-nl/config.json` 文件中。
 
 ## 系统要求
 

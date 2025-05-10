@@ -3,6 +3,8 @@
  * 将用户自然语言指令转换为Git命令
  */
 
+import { generateGitCommand, initLLMService } from './llm-service.ts';
+
 interface NLPResult {
   command: string;
   confidence: number;
@@ -30,6 +32,51 @@ interface CommandTemplate {
  * @returns 转换后的Git命令
  */
 export async function processNaturalLanguage(input: string): Promise<string> {
+  try {
+    // 检查LLM服务是否可用
+    const llmAvailable = await initLLMService();
+    
+    // 如果LLM服务可用，优先使用LLM生成Git命令
+    if (llmAvailable) {
+      try {
+        const result = await generateGitCommand(input);
+        
+        // 如果置信度高于0.7，直接使用LLM生成的命令
+        if (result.confidence > 0.7) {
+          return result.command;
+        }
+        
+        // 置信度不高时，尝试使用规则匹配并比较结果
+        const ruleBasedCommand = await processNaturalLanguageWithRules(input);
+        
+        // 如果规则匹配的命令和LLM生成的命令相同或者置信度大于0.5，使用LLM生成的命令
+        if (ruleBasedCommand === result.command || result.confidence > 0.5) {
+          return result.command;
+        }
+        
+        // 否则使用规则匹配的命令
+        return ruleBasedCommand;
+      } catch (error) {
+        // LLM生成失败，回退到规则匹配
+        console.warn('LLM生成命令失败，回退到规则匹配:', error);
+        return processNaturalLanguageWithRules(input);
+      }
+    } else {
+      // LLM服务不可用，使用规则匹配
+      return processNaturalLanguageWithRules(input);
+    }
+  } catch (error) {
+    // 错误处理
+    throw new Error(`处理自然语言指令失败: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * 使用规则匹配处理自然语言指令
+ * @param input 用户输入的自然语言指令
+ * @returns 转换后的Git命令
+ */
+async function processNaturalLanguageWithRules(input: string): Promise<string> {
   // 标准化输入文本
   const normalizedInput = normalizeInput(input);
   

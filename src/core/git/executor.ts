@@ -6,6 +6,7 @@
 import simpleGit, { SimpleGit } from 'simple-git';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { analyzeCommandRisk, initLLMService } from '../nlp/llm-service.ts';
 
 const execPromise = promisify(exec);
 
@@ -22,11 +23,49 @@ export interface GitCommandRisk {
 }
 
 /**
- * 验证Git命令的风险级别
+ * 验证Git命令的风险级别，优先使用LLM分析，如果不可用则回退到本地规则
  * @param command Git命令
  * @returns 风险评估结果
  */
-export function validateGitCommand(command: string): GitCommandRisk {
+export async function validateGitCommand(command: string): Promise<GitCommandRisk> {
+  try {
+    // 检查LLM服务是否可用
+    const llmAvailable = await initLLMService();
+    
+    if (llmAvailable) {
+      try {
+        // 使用LLM分析命令风险
+        const riskAnalysis = await analyzeCommandRisk(command);
+        
+        return {
+          level: riskAnalysis.riskLevel,
+          description: riskAnalysis.explanation,
+          mitigation: riskAnalysis.riskLevel !== 'low' 
+            ? '操作前建议先确认命令影响范围或创建备份' 
+            : undefined
+        };
+      } catch (error) {
+        // LLM分析失败，回退到本地规则
+        console.warn('LLM风险分析失败，回退到本地规则:', error);
+        return validateGitCommandLocally(command);
+      }
+    } else {
+      // LLM服务不可用，使用本地规则
+      return validateGitCommandLocally(command);
+    }
+  } catch (error) {
+    // 错误处理，回退到本地规则
+    console.warn('风险分析出错，回退到本地规则:', error);
+    return validateGitCommandLocally(command);
+  }
+}
+
+/**
+ * 使用本地规则验证Git命令的风险级别
+ * @param command Git命令
+ * @returns 风险评估结果
+ */
+export function validateGitCommandLocally(command: string): GitCommandRisk {
   // 高风险命令关键词
   const highRiskPatterns = [
     'reset --hard',
@@ -78,6 +117,9 @@ export function validateGitCommand(command: string): GitCommandRisk {
  * @returns 执行结果
  */
 export async function executeGitCommand(command: string): Promise<ExecutionResult> {
+  // 验证命令风险
+  const risk = await validateGitCommand(command);
+  
   // 执行命令
   try {
     // 如果是git命令，使用simple-git
@@ -119,22 +161,21 @@ export async function executeGitCommand(command: string): Promise<ExecutionResul
         success: true,
         output: result || '命令已执行，无输出结果' // 确保始终有输出
       };
-    } else {
-      // 非git命令，使用普通exec执行
-      const { stdout, stderr } = await execPromise(command);
-      
-      if (stderr && !stdout) {
-        return {
-          success: false,
-          error: stderr
-        };
-      }
-      
+    }
+    // 非git命令，使用普通exec执行
+    const { stdout, stderr } = await execPromise(command);
+    
+    if (stderr && !stdout) {
       return {
-        success: true,
-        output: stdout || '命令已执行，无输出结果' // 确保始终有输出
+        success: false,
+        error: stderr
       };
     }
+    
+    return {
+      success: true,
+      output: stdout || '命令已执行，无输出结果' // 确保始终有输出
+    };
   } catch (error: any) {
     return {
       success: false,
