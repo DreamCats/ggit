@@ -228,3 +228,5 @@ bun tests/commit-message-test.js
 # 通过交互式工作流提交带引号的消息
 bun run dev -- -i "提交修改，包含\"引号\""
 ```
+
+test
