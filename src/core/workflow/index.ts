@@ -12,6 +12,13 @@ import {
   gitPushStep,
   gitCodeStatsStep
 } from './steps/git-steps.ts';
+import {
+  gitListBranchesStep,
+  gitSwitchBranchStep,
+  gitMergePreviewStep,
+  gitMergeExecuteStep,
+  gitPushMergeStep
+} from './steps/git-merge-steps.ts';
 
 // 创建工作流引擎单例
 const workflowEngine = new WorkflowEngine();
@@ -25,6 +32,13 @@ function registerAllSteps() {
   workflowEngine.registerStep(gitCommitStep);
   workflowEngine.registerStep(gitPushStep);
   workflowEngine.registerStep(gitCodeStatsStep);
+  
+  // 注册分支合并相关步骤
+  workflowEngine.registerStep(gitListBranchesStep);
+  workflowEngine.registerStep(gitSwitchBranchStep);
+  workflowEngine.registerStep(gitMergePreviewStep);
+  workflowEngine.registerStep(gitMergeExecuteStep);
+  workflowEngine.registerStep(gitPushMergeStep);
   
   // 可以在此添加更多步骤...
 }

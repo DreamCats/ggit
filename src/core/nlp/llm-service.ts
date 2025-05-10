@@ -201,7 +201,13 @@ export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanR
     const input_lower = input.toLowerCase();
     
     // 根据输入关键词选择合适的步骤
-    if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
+    if (input_lower.includes('合并') && (input_lower.includes('分支') || input_lower.includes('branch'))) {
+      return {
+        steps: ['git-list-branches', 'git-switch-branch', 'git-merge-preview', 'git-merge-execute', 'git-push-merge'],
+        summary: '选择并合并分支，预览变更，处理冲突并推送结果',
+        reasoning: '根据输入中包含合并分支的关键词，选择分支合并工作流。'
+      };
+    } else if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
       return {
         steps: ['git-status', 'git-code-stats'],
         summary: '检查仓库状态并统计代码变更',
@@ -261,6 +267,11 @@ export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanR
         - git-commit: 提交变更
         - git-push: 推送到远程仓库
         - git-code-stats: 统计变更的代码行数，按文件类型和文件分类展示
+        - git-list-branches: 获取分支列表并选择要合并的分支和目标分支
+        - git-switch-branch: 切换到目标分支
+        - git-merge-preview: 预览将要合并的变更内容
+        - git-merge-execute: 执行分支合并操作
+        - git-push-merge: 推送合并结果到远程仓库
         
         你需要根据用户的意图，选择合适的步骤并按照逻辑顺序排列。
         
@@ -270,8 +281,9 @@ export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanR
         3. 用户想要"提交并推送"，应该包含：git-status -> git-diff-analysis -> git-add -> git-commit -> git-push
         4. 用户想要"统计代码变更"，应该包含：git-status -> git-code-stats
         5. 用户想要"查看代码统计并提交"，应该包含：git-status -> git-code-stats -> git-diff-analysis -> git-add -> git-commit
+        6. 用户想要"合并分支"，应该包含：git-list-branches -> git-switch-branch -> git-merge-preview -> git-merge-execute -> git-push-merge
         
-        请分析用户的意图，并生成合适的工作流计划。如果用户明确提到了统计代码行数或查看代码变更统计，一定要包含git-code-stats步骤。
+        请分析用户的意图，并生成合适的工作流计划。如果用户明确提到了统计代码行数或查看代码变更统计，一定要包含git-code-stats步骤。如果用户提到了合并分支，一定要包含分支合并相关的步骤。
         
         输出必须符合以下JSON结构:
         {format_instructions}`
@@ -298,7 +310,13 @@ export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanR
     // 基于输入内容提供一个合理的回退方案
     const input_lower = input.toLowerCase();
     
-    if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
+    if (input_lower.includes('合并') && (input_lower.includes('分支') || input_lower.includes('branch'))) {
+      return {
+        steps: ['git-list-branches', 'git-switch-branch', 'git-merge-preview', 'git-merge-execute', 'git-push-merge'],
+        summary: '选择并合并分支，预览变更，处理冲突并推送结果',
+        reasoning: '根据输入中包含合并分支的关键词，选择分支合并工作流。'
+      };
+    } else if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
       return {
         steps: ['git-status', 'git-code-stats'],
         summary: '检查仓库状态并统计代码变更',
