@@ -194,7 +194,39 @@ export async function generateGitCommand(input: string): Promise<GitCommandResul
 export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanResult> {
   // 检查API密钥
   if (!API_KEY) {
-    throw new Error('请先设置OpenAI API密钥');
+    console.warn('警告: 未设置OpenAI API密钥，无法使用LLM生成工作流计划');
+    console.warn('请使用 "gt config -k YOUR_API_KEY" 命令设置API密钥');
+    
+    // 返回基础工作流计划
+    const input_lower = input.toLowerCase();
+    
+    // 根据输入关键词选择合适的步骤
+    if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
+      return {
+        steps: ['git-status', 'git-code-stats'],
+        summary: '检查仓库状态并统计代码变更',
+        reasoning: '根据输入中包含统计相关关键词，选择查看状态并统计代码变更的步骤。'
+      };
+    } else if (input_lower.includes('提交') && input_lower.includes('推送')) {
+      return {
+        steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit', 'git-push'],
+        summary: '检查仓库状态，添加变更文件，提交并推送到远程',
+        reasoning: '根据输入中包含提交和推送关键词，选择完整的提交并推送工作流。'
+      };
+    } else if (input_lower.includes('提交')) {
+      return {
+        steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'],
+        summary: '检查仓库状态，添加变更文件并提交',
+        reasoning: '根据输入中包含提交关键词，选择查看状态并提交变更的工作流。'
+      };
+    } else {
+      // 默认情况，至少检查状态
+      return {
+        steps: ['git-status'],
+        summary: '检查仓库状态',
+        reasoning: '无法确定具体意图，默认执行状态检查。'
+      };
+    }
   }
   
   try {
@@ -263,12 +295,35 @@ export async function generateWorkflowPlan(input: string): Promise<WorkflowPlanR
   } catch (error) {
     console.error('生成工作流计划失败:', error);
     
-    // 失败时返回默认工作流计划（检查状态、添加所有文件、提交）
-    return {
-      steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'],
-      summary: '检查状态并提交所有变更',
-      reasoning: '由于无法分析用户意图，提供一个基本的提交工作流作为默认选项。'
-    };
+    // 基于输入内容提供一个合理的回退方案
+    const input_lower = input.toLowerCase();
+    
+    if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
+      return {
+        steps: ['git-status', 'git-code-stats'],
+        summary: '检查仓库状态并统计代码变更',
+        reasoning: '根据输入中包含统计相关关键词，选择查看状态并统计代码变更的步骤。'
+      };
+    } else if (input_lower.includes('提交') && input_lower.includes('推送')) {
+      return {
+        steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit', 'git-push'],
+        summary: '检查仓库状态，添加变更文件，提交并推送到远程',
+        reasoning: '根据输入中包含提交和推送关键词，选择完整的提交并推送工作流。'
+      };
+    } else if (input_lower.includes('提交')) {
+      return {
+        steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'],
+        summary: '检查仓库状态，添加变更文件并提交',
+        reasoning: '由于LLM处理失败，根据输入中包含提交关键词，提供一个基本的提交工作流。'
+      };
+    } else {
+      // 默认工作流
+      return {
+        steps: ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'],
+        summary: '检查状态并提交所有变更',
+        reasoning: '由于无法分析用户意图，提供一个基本的提交工作流作为默认选项。'
+      };
+    }
   }
 }
 

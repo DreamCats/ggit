@@ -22,7 +22,11 @@ async function runCodeStatsTest() {
   // 初始化LLM服务
   const llmAvailable = await initLLMService();
   if (!llmAvailable) {
-    console.log(chalk.yellow('警告: LLM服务未配置，功能可能受限'));
+    console.log(chalk.yellow('警告: LLM服务未配置，将使用基础工作流。'));
+    console.log(chalk.yellow('提示: 使用 "gt config -k YOUR_API_KEY" 设置API密钥以获得更智能的工作流生成。'));
+    console.log(chalk.dim('测试将继续进行，但工作流计划可能不够智能。'));
+  } else {
+    console.log(chalk.green('✓ LLM服务已初始化'));
   }
   
   // 快速检查是否在Git仓库中

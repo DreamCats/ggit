@@ -40,6 +40,13 @@ export function initCLI(program: Command): void {
         if (options.interactive) {
           console.log(chalk.blue('正在以交互式模式处理: ') + chalk.bold(`"${command}"`));
           
+          // 检查LLM服务是否初始化
+          const llmAvailable = await initLLMService();
+          if (!llmAvailable) {
+            console.log(chalk.yellow('警告: LLM服务未配置，将使用基础工作流。'));
+            console.log(chalk.yellow('建议: 使用 "gt config -k YOUR_API_KEY" 命令配置API密钥以获得更智能的工作流生成。'));
+          }
+          
           // 初始化工作流引擎
           const workflowEngine = initWorkflowEngine();
           
@@ -123,6 +130,13 @@ export function initCLI(program: Command): void {
     .action(async (text: string) => {
       try {
         console.log(chalk.blue('正在以交互式模式处理: ') + chalk.bold(`"${text}"`));
+        
+        // 检查LLM服务是否初始化
+        const llmAvailable = await initLLMService();
+        if (!llmAvailable) {
+          console.log(chalk.yellow('警告: LLM服务未配置，将使用基础工作流。'));
+          console.log(chalk.yellow('建议: 使用 "gt config -k YOUR_API_KEY" 命令配置API密钥以获得更智能的工作流生成。'));
+        }
         
         // 初始化工作流引擎
         const workflowEngine = initWorkflowEngine();

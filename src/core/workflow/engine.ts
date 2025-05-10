@@ -104,18 +104,52 @@ export class WorkflowEngine {
    * @returns 工作流计划
    */
   private async generatePlan(input: string): Promise<WorkflowPlan> {
-    // 使用LLM生成工作流计划
-    const planResult = await generateWorkflowPlan(input);
-    
-    // 将步骤ID转换为实际步骤
-    const steps = planResult.steps
-      .map((stepId: string) => this.getStepById(stepId))
-      .filter((step): step is WorkflowStep => !!step);
-    
-    return {
-      steps,
-      summary: planResult.summary
-    };
+    try {
+      // 使用LLM生成工作流计划
+      const planResult = await generateWorkflowPlan(input);
+      
+      // 将步骤ID转换为实际步骤
+      const steps = planResult.steps
+        .map((stepId: string) => this.getStepById(stepId))
+        .filter((step): step is WorkflowStep => !!step);
+      
+      return {
+        steps,
+        summary: planResult.summary
+      };
+    } catch (error) {
+      console.warn(chalk.yellow('警告: 无法使用LLM生成工作流计划，将使用基础工作流。'));
+      console.warn(chalk.dim('原因可能是LLM服务未初始化。请使用 "gt config -k YOUR_API_KEY" 配置API密钥。'));
+      
+      // 提供一个基础的工作流计划作为后备方案
+      // 根据用户输入关键词选择合适的步骤
+      const input_lower = input.toLowerCase();
+      
+      let fallbackSteps: string[] = [];
+      let summary = '';
+      
+      if (input_lower.includes('统计') || input_lower.includes('代码行') || input_lower.includes('变更统计')) {
+        fallbackSteps = ['git-status', 'git-code-stats'];
+        summary = '检查仓库状态并统计代码变更';
+      } else if (input_lower.includes('提交') && input_lower.includes('推送')) {
+        fallbackSteps = ['git-status', 'git-diff-analysis', 'git-add', 'git-commit', 'git-push'];
+        summary = '检查仓库状态，添加变更文件，提交并推送到远程';
+      } else if (input_lower.includes('提交')) {
+        fallbackSteps = ['git-status', 'git-diff-analysis', 'git-add', 'git-commit'];
+        summary = '检查仓库状态，添加变更文件并提交';
+      } else {
+        // 默认情况，至少检查状态
+        fallbackSteps = ['git-status'];
+        summary = '检查仓库状态';
+      }
+      
+      // 将步骤ID转换为实际步骤
+      const steps = fallbackSteps
+        .map((stepId: string) => this.getStepById(stepId))
+        .filter((step): step is WorkflowStep => !!step);
+      
+      return { steps, summary };
+    }
   }
   
   /**

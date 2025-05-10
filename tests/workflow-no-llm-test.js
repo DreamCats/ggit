@@ -1,73 +1,45 @@
 #!/usr/bin/env node
 
 /**
- * 测试带有退出选项的交互式工作流
+ * 测试无LLM的工作流功能
  * 
  * 使用方法:
- * 1. 确保已配置LLM服务 (gt config -k "your-api-key")
- * 2. 运行本脚本: node tests/workflow-interactive-test.js
+ * 1. 运行本脚本: node tests/workflow-no-llm-test.js
  */
 
 import { initWorkflowEngine } from '../src/core/workflow/index.ts';
-import { initLLMService } from '../src/core/nlp/llm-service.ts';
 import chalk from 'chalk';
 import { executeGitCommand } from '../src/core/git/executor.ts';
 
 // 测试命令集
 const TEST_COMMANDS = [
   '提交当前所有修改',
-  '统计代码变更并提交',
-  '查看代码行数统计，然后选择性提交部分文件',
-  '检查状态、统计代码并提交推送'
+  '统计代码变更',
+  '提交并推送到远程',
+  '检查仓库状态'
 ];
 
 /**
- * 显示工作流帮助信息
+ * 运行无LLM工作流测试
  */
-function showHelpInfo() {
-  console.log(chalk.blue.bold('\n=== 工作流退出选项说明 ==='));
-  console.log(chalk.dim('在执行工作流的过程中，您可以随时选择以下操作:'));
-  console.log('');
-  console.log(chalk.green('• 继续执行当前步骤:') + ' 完成当前步骤并继续工作流');
-  console.log(chalk.yellow('• 跳过当前步骤:') + ' 跳过当前步骤，进入下一步');
-  console.log(chalk.red('• 退出工作流:') + ' 立即结束整个工作流');
-  console.log('');
-  console.log(chalk.dim('在各个步骤中还有更多特定的选项，可以控制工作流的进程。'));
-  console.log(chalk.dim('请在交互过程中查看选项并做出选择。'));
-  console.log('');
-}
-
-/**
- * 运行工作流测试
- */
-async function runInteractiveWorkflowTest() {
-  console.log(chalk.blue.bold('=== 带退出选项的交互式工作流测试 ==='));
+async function runNoLLMWorkflowTest() {
+  console.log(chalk.blue.bold('=== 无LLM服务的工作流测试 ==='));
   
-  // 检查是否在Git仓库中
+  // 快速检查是否在Git仓库中
   const gitStatusResult = await executeGitCommand('git status');
   if (!gitStatusResult.success) {
     console.log(chalk.red('错误: 当前目录不是Git仓库，或Git未正确配置'));
     return;
   }
   
-  // 初始化LLM服务
-  const llmAvailable = await initLLMService();
-  if (!llmAvailable) {
-    console.log(chalk.yellow('警告: LLM服务未配置，将使用基础工作流。'));
-    console.log(chalk.yellow('提示: 使用 "gt config -k YOUR_API_KEY" 设置API密钥以获得更智能的工作流生成。'));
-    console.log(chalk.dim('测试将继续进行，但工作流计划可能不够智能。'));
-  } else {
-    console.log(chalk.green('✓ LLM服务已初始化'));
-  }
+  console.log(chalk.dim('本测试将模拟未配置LLM服务的情况下使用工作流功能'));
+  console.log(chalk.dim('工作流引擎应当能够提供基本功能，尽管没有智能分析能力'));
   
   // 显示测试命令列表
   console.log(chalk.yellow('\n可用测试命令:'));
   TEST_COMMANDS.forEach((cmd, i) => {
     console.log(chalk.dim(`${i + 1}. ${cmd}`));
   });
-  
-  // 显示交互式工作流帮助
-  showHelpInfo();
   
   // 导入inquirer
   const inquirer = (await import('inquirer')).default;
@@ -105,10 +77,9 @@ async function runInteractiveWorkflowTest() {
   
   console.log(chalk.blue.bold('\n开始测试命令:'), chalk.bold(commandToTest));
   console.log(chalk.dim('工作流即将开始执行，请跟随步骤进行交互...'));
-  console.log(chalk.dim('在每个步骤中，您都可以选择继续、跳过或退出'));
   console.log('');
   
-  // 执行工作流
+  // 不初始化LLM服务，直接使用工作流引擎
   try {
     // 初始化工作流引擎
     const workflowEngine = initWorkflowEngine();
@@ -121,4 +92,4 @@ async function runInteractiveWorkflowTest() {
 }
 
 // 运行测试
-runInteractiveWorkflowTest().catch(console.error); 
+runNoLLMWorkflowTest().catch(console.error); 
