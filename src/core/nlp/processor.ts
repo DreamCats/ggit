@@ -241,17 +241,34 @@ function extractParameters(intent: string, input: string): Record<string, string
       /提交.*(?:为|作为|内容为)[\s]*(.*?)(?:$|[。.])/  // "提交代码为修复登录问题"
     ];
     
+    let messageFound = false;
+    
     for (const pattern of msgPatterns) {
       const match = input.match(pattern);
       if (match && match[1]) {
         params.message = match[1].trim();
+        messageFound = true;
         break;
       }
     }
     
-    // 如果没有提取到消息，使用默认消息
-    if (!params.message) {
-      params.message = "更新";
+    // 检查是否明确指出要自动生成提交消息
+    if (!messageFound && (
+      input.includes('自动生成') || 
+      input.includes('智能生成') || 
+      input.includes('ai生成') || 
+      input.includes('生成提交信息') ||
+      input.includes('生成消息') ||
+      input.includes('根据内容') ||
+      input.includes('分析内容')
+    )) {
+      params.autoGenerateMessage = 'true';
+    }
+    
+    // 如果没有提取到消息且没有明确自动生成，使用默认消息
+    if (!messageFound && !params.autoGenerateMessage) {
+      // 不设置默认消息，让executor去处理自动生成
+      params.autoGenerateMessage = 'true';
     }
     
     // 检查是否指定了特定文件
@@ -329,12 +346,18 @@ function generateCommand(intentMatch: IntentMatch, originalInput: string): strin
   const commandTemplates: Record<string, CommandTemplate> = {
     'commit': {
       template: 'git add {files} && git commit -m "{message}"',
-      requiresParams: ['message'],
+      requiresParams: [],
       description: '提交代码修改',
       examples: ['提交所有修改，备注修复登录问题', '提交代码：优化性能'],
       customHandler: (params) => {
         const files = params.files || '-A';
-        return `git add ${files} && git commit -m "${params.message}"`;
+        
+        // 如果设置了自动生成消息标志，则只执行commit，让executor去处理消息生成
+        if (params.autoGenerateMessage === 'true') {
+          return `git add ${files} && git commit`;
+        }
+        
+        return `git add ${files} && git commit -m "${params.message || '更新'}"`;
       }
     },
     'push': {
@@ -510,10 +533,12 @@ function generateCommand(intentMatch: IntentMatch, originalInput: string): strin
     throw new Error(`不支持的命令: ${intent}`);
   }
 
-  // 检查是否缺少必需参数
-  for (const param of template.requiresParams) {
-    if (!parameters[param]) {
-      throw new Error(`命令缺少必要参数: ${param}，请提供更具体的指令`);
+  // 检查是否缺少必需参数（除了commit命令，因为它现在支持自动生成消息）
+  if (intent !== 'commit') {
+    for (const param of template.requiresParams) {
+      if (!parameters[param]) {
+        throw new Error(`命令缺少必要参数: ${param}，请提供更具体的指令`);
+      }
     }
   }
 

@@ -179,6 +179,94 @@ export async function generateGitCommand(input: string): Promise<GitCommandResul
 }
 
 /**
+ * 根据Git diff内容生成提交消息
+ * @param diffContent Git diff的内容
+ * @returns 生成的提交消息
+ */
+export async function generateCommitMessage(diffContent: string): Promise<string> {
+  // 检查API密钥
+  if (!API_KEY) {
+    throw new Error('请先设置OpenAI API密钥');
+  }
+  
+  try {
+    // 初始化LLM
+    const modelConfig: any = {
+      modelName: MODEL_NAME,
+      temperature: 0.2, // 稍微增加一点创造性
+      openAIApiKey: API_KEY,
+      maxTokens: 100, // 限制输出长度，提交消息应当简洁
+    };
+    
+    // 如果设置了BASE_URL，添加到配置中
+    if (BASE_URL) {
+      modelConfig.configuration = {
+        baseURL: BASE_URL
+      };
+    }
+    
+    const model = new ChatOpenAI(modelConfig);
+    
+    // 创建输出解析器
+    const parser = StructuredOutputParser.fromZodSchema(
+      z.object({
+        commitMessage: z.string().describe('Git提交消息，不包含引号'),
+        type: z.enum(['feat', 'fix', 'docs', 'style', 'refactor', 'test', 'chore']).optional().describe('提交类型（可选）')
+      })
+    );
+    
+    // 截断过长的diff内容，防止超出token限制
+    const truncatedDiff = diffContent.length > 3000 
+      ? diffContent.substring(0, 3000) + "\n... [diff内容过长，已截断]" 
+      : diffContent;
+    
+    // 创建提示模板
+    const prompt = ChatPromptTemplate.fromMessages([
+      SystemMessagePromptTemplate.fromTemplate(
+        `根据提供的Git diff内容，生成一个简洁、描述性强的提交消息。
+        
+        请遵循以下规则：
+        1. 消息应简洁明了，通常不超过50个字符
+        2. 使用祈使句（命令式），如"修复"而不是"修复了"
+        3. 可以选择性地识别提交类型（feat, fix, docs, style, refactor, test, chore）
+        4. 不要在消息中包含引号
+        5. 如果是多语言环境，优先使用中文
+        
+        以下是Git diff内容:
+        
+        {diffContent}
+        
+        {format_instructions}`
+      )
+    ]);
+    
+    // 格式化提示
+    const formattedPrompt = await prompt.formatPromptValue({
+      format_instructions: parser.getFormatInstructions(),
+      diffContent: truncatedDiff
+    });
+    
+    // 使用格式化后的消息调用模型
+    const result = await model.generatePrompt([formattedPrompt]);
+    const message = result.generations[0][0].text;
+    
+    // 解析回复为JSON
+    const parsedOutput = await parser.parse(message);
+    
+    // 如果有提交类型，则添加到消息前面
+    if (parsedOutput.type) {
+      return `${parsedOutput.type}: ${parsedOutput.commitMessage}`;
+    }
+    
+    return parsedOutput.commitMessage;
+  } catch (error) {
+    console.error('生成提交消息失败:', error);
+    // 失败时返回默认消息
+    return "更新";
+  }
+}
+
+/**
  * 分析Git命令的风险
  * @param command Git命令
  * @returns 风险分析结果
@@ -249,60 +337,56 @@ export async function analyzeCommandRisk(command: string): Promise<{
     return await parser.parse(message);
     
   } catch (error) {
-    console.error('风险分析失败:', error);
-    // 如果LLM分析失败，回退到本地规则
+    console.error('分析命令风险失败:', error);
+    // 失败时使用本地规则
     return analyzeCommandRiskLocally(command);
   }
 }
 
-/**
- * 使用本地规则分析命令风险
- * @param command Git命令
- * @returns 风险分析结果
- */
+// 本地分析命令风险
 function analyzeCommandRiskLocally(command: string): {
   riskLevel: 'low' | 'medium' | 'high';
   explanation: string;
 } {
   // 高风险命令关键词
   const highRiskPatterns = [
-    { pattern: 'reset --hard', explanation: '硬重置会丢失所有未提交的修改' },
-    { pattern: 'clean -fd', explanation: '强制删除未跟踪的文件和目录' },
-    { pattern: 'push --force', explanation: '强制推送可能覆盖远程仓库历史' },
-    { pattern: 'push -f', explanation: '强制推送可能覆盖远程仓库历史' },
-    { pattern: 'branch -D', explanation: '强制删除分支，即使有未合并的更改' }
+    'reset --hard',
+    'clean -fd',
+    'push --force',
+    'push -f',
+    'branch -D'
   ];
 
   // 中等风险命令关键词
   const mediumRiskPatterns = [
-    { pattern: 'reset', explanation: '重置操作可能会改变工作区状态' },
-    { pattern: 'rebase', explanation: '变基操作会重写提交历史' },
-    { pattern: 'checkout -b', explanation: '创建并切换分支，暂存区会随之变化' },
-    { pattern: 'branch -d', explanation: '删除已合并的分支' },
-    { pattern: 'stash drop', explanation: '删除存储的工作状态' }
+    'reset',
+    'rebase',
+    'checkout -b',
+    'branch -d',
+    'stash drop'
   ];
 
   // 判断风险级别
-  for (const { pattern, explanation } of highRiskPatterns) {
+  for (const pattern of highRiskPatterns) {
     if (command.includes(pattern)) {
       return {
         riskLevel: 'high',
-        explanation
+        explanation: '此命令可能会导致数据丢失或破坏仓库历史'
       };
     }
   }
 
-  for (const { pattern, explanation } of mediumRiskPatterns) {
+  for (const pattern of mediumRiskPatterns) {
     if (command.includes(pattern)) {
       return {
         riskLevel: 'medium',
-        explanation
+        explanation: '此命令会改变仓库状态，但通常可以恢复'
       };
     }
   }
 
   return {
     riskLevel: 'low',
-    explanation: '此命令是安全操作，不会导致数据丢失'
+    explanation: '此命令是安全的，不会导致数据丢失'
   };
 } 

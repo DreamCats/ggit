@@ -6,7 +6,7 @@
 import simpleGit, { SimpleGit } from 'simple-git';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { analyzeCommandRisk, initLLMService } from '../nlp/llm-service.ts';
+import { analyzeCommandRisk, initLLMService, generateCommitMessage } from '../nlp/llm-service.ts';
 
 const execPromise = promisify(exec);
 
@@ -112,6 +112,29 @@ export function validateGitCommandLocally(command: string): GitCommandRisk {
 }
 
 /**
+ * 获取待提交变更的diff内容
+ * @returns diff内容文本
+ */
+export async function getGitDiff(): Promise<string> {
+  try {
+    const git: SimpleGit = simpleGit();
+    
+    // 获取暂存区的diff
+    const stagedDiff = await git.diff(['--staged']);
+    
+    // 如果暂存区没有内容，则获取工作区的diff
+    if (!stagedDiff) {
+      return await git.diff();
+    }
+    
+    return stagedDiff;
+  } catch (error) {
+    console.error('获取diff内容失败:', error);
+    return '';
+  }
+}
+
+/**
  * 安全地执行Git命令
  * @param command Git命令
  * @returns 执行结果
@@ -130,6 +153,38 @@ export async function executeGitCommand(command: string): Promise<ExecutionResul
       // 获取命令的第一个部分
       const gitCommandParts = gitCommand.split(' ');
       const mainCommand = gitCommandParts[0];
+      
+      // 处理commit命令且没有提供消息的情况，使用LLM生成提交消息
+      if (mainCommand === 'commit' && !gitCommand.includes('-m') && !gitCommand.includes('--message')) {
+        try {
+          // 检查LLM服务是否可用
+          const llmAvailable = await initLLMService();
+          
+          if (llmAvailable) {
+            // 获取diff内容
+            const diffContent = await getGitDiff();
+            
+            if (diffContent) {
+              // 使用LLM生成提交消息
+              const commitMessage = await generateCommitMessage(diffContent);
+              
+              // 重构命令，添加提交消息
+              const newCommand = `commit -m "${commitMessage}"`;
+              console.log(`自动生成提交消息: "${commitMessage}"`);
+              
+              // 执行修改后的命令
+              const result = await git.raw(['commit', '-m', commitMessage]);
+              return {
+                success: true,
+                output: result || `已提交，消息: "${commitMessage}"`
+              };
+            }
+          }
+        } catch (error) {
+          console.warn('自动生成提交消息失败，使用默认消息:', error);
+          // 继续使用原始命令
+        }
+      }
       
       // 创建备份点（对于可能修改仓库状态的命令）
       // 这些命令通常需要创建备份点
