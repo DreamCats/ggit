@@ -54,69 +54,6 @@ export function initCLI(program: Command): void {
           await workflowEngine.processInput(command);
           return;
         }
-        
-        // 否则使用传统方式处理自然语言命令
-        console.log(chalk.dim(`正在处理: "${command}"`));
-        const gitCommand = await processNaturalLanguage(command);
-        
-        // 检查命令风险
-        const risk = await validateGitCommand(gitCommand);
-        
-        // 预览命令
-        console.log('');
-        console.log(chalk.blue('即将执行:'), chalk.bold(gitCommand));
-        
-        // 根据风险级别显示不同的提示
-        if (risk.level === 'high') {
-          console.log(chalk.red('⚠️ 高风险命令:'), risk.description);
-          if (risk.mitigation) {
-            console.log(chalk.yellow('建议:'), risk.mitigation);
-          }
-          
-          // 生成随机验证码
-          const verificationCode = Math.floor(1000 + Math.random() * 9000).toString();
-          
-          // 请求用户输入验证码确认
-          const { userCode } = await inquirer.prompt([{
-            type: 'input',
-            name: 'userCode',
-            message: `为确保安全，请输入验证码 ${verificationCode} 以继续执行:`,
-            validate: (input: string) => input === verificationCode ? true : '验证码不正确，请重新输入'
-          }]);
-          
-          console.log(chalk.green('验证通过，继续执行...'));
-        } else if (risk.level === 'medium') {
-          console.log(chalk.yellow('⚠️ 中等风险命令:'), risk.description);
-          if (risk.mitigation) {
-            console.log(chalk.dim('建议:'), risk.mitigation);
-          }
-        } else {
-          console.log(chalk.green('✓ 低风险命令:'), risk.description);
-        }
-        
-        // 请求确认
-        const { confirmed } = await inquirer.prompt([{
-          type: 'confirm',
-          name: 'confirmed',
-          message: '确认执行?',
-          default: true
-        }]);
-        
-        if (confirmed) {
-          // 执行命令
-          const result = await executeGitCommand(gitCommand);
-          
-          if (result.success) {
-            console.log(chalk.green('执行成功!'));
-            if (result.output) {
-              console.log(result.output);
-            }
-          } else {
-            console.error(chalk.red('执行失败:'), result.error);
-          }
-        } else {
-          console.log(chalk.yellow('已取消执行'));
-        }
       } catch (error: any) {
         console.error(chalk.red('处理失败:'), error.message || String(error));
       }

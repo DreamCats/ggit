@@ -286,7 +286,10 @@ export const gitCommitStep: WorkflowStep = {
     
     // 执行提交命令
     console.log(chalk.dim(`正在提交变更: "${commitMessage}"...`));
-    const result = await executeGitCommand(`git commit -m "${commitMessage}"`);
+    
+    // 转义提交消息中的单引号，然后用单引号包裹整个消息
+    const escapedMessage = commitMessage.replace(/'/g, "'\\''");
+    const result = await executeGitCommand(`git commit -m '${escapedMessage}'`);
     
     if (!result.success) {
       throw new Error(`提交失败: ${result.error}`);
