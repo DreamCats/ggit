@@ -1,0 +1,24 @@
+{
+  "name": "gt-nl",
+  "version": "0.1.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "start": "bun run src/index.ts",
+    "build": "bun build src/index.ts --outdir ./dist --target node",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "commander": "^11.0.0",
+    "chalk": "^5.3.0",
+    "simple-git": "^3.20.0",
+    "langchain": "^0.0.170",
+    "sqlite3": "^5.1.6",
+    "inquirer": "^9.2.11"
+  }
+}
